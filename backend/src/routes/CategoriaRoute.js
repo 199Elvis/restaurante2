@@ -1,7 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const usuarioController = require('../controller/CategoriaController');
+const categoriaController = require('../controller/CategoriaController');
 
 router.post('/crear', usuarioController.createCategoria);
+router.get('/listar', categoriaController.getCategorias);
+router.put('/actualizar/:idCategoria', categoriaController.updateCategoria);
+
 
 module.exports = router;

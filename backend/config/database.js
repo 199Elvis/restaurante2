@@ -16,6 +16,12 @@ const pool = mysql.createPool({
     queueLimit: 0,
 });
 
+exports.getTransaction = async() => {
+    const conn = await pool.getConnection();
+    await conn.beginTransaction();
+    return conn;
+}
+
 pool.getConnection()
 .then((connection) => {
     console.log('Database connection established successfully');
