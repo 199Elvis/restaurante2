@@ -1,15 +1,18 @@
 const db = require('../../config/database');
 
 exports.createProducto = async (producto) => {
+    console.log(producto);
     const query = 'INSERT INTO producto (nombre, descripcion, precio, stock, idCategoria, estado) VALUES (?, ?, ?, ?, ?, ?)';
     const newProducto = await db.execute(query, [
         producto.nombre, 
-        producto.descripcion, 
+        producto.descripcion,
+        producto.precio, 
         producto.stock,
         producto.idCategoria,
         producto.estado
     ]);
-    return newProducto.insertId;
+    console.log(newProducto);
+    return newProducto[0].insertId;
 }
 
 exports.getProductos = async () => {

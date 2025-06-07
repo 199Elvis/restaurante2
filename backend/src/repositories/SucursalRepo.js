@@ -7,6 +7,7 @@ exports.createSucursal = async (sucursal) => {
         sucursal.direccion,
         sucursal.telefono
     ])
+    console.log(sucursal);
     return result.insertId;
 }
 

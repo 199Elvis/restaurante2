@@ -3,10 +3,10 @@ const sucursalService = require('../service/SucursalServicio');
 
 exports.createSucursal = async (req, res) => {
     try {
-        const {nombre, descripcion, telefono} = req.body;
+        const {nombre, direccion, telefono} = req.body;
         const data = {
             nombre,
-            descripcion,
+            direccion,
             telefono
         }
         const sucursal = await sucursalService.createSucursal(data);

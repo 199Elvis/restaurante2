@@ -12,8 +12,9 @@ exports.createSucursal = async (sucursal) => {
     if (!numeros(sucursal.telefono)) {
         throw new Error('El teléfono debe ser un número válido de hasta 10 dígitos');
     }
-
+    console.log(sucursal);
     const buscar = await sucursalRepo.getSucursal();
+    console.log(buscar);
     if (buscar.length > 0) {
         throw new Error('Ya existe una sucursal registrada');
     }

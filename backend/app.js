@@ -16,9 +16,13 @@ app.use(express.urlencoded({ extended: true }));
 
 const usuarioRoute = require('./src/routes/UsuarioRoute');
 const categoriaRoute = require('./src/routes/CategoriaRoute');
+const productoRoute = require('./src/routes/ProductoRoute');
+const sucursalRoute = require('./src/routes/SucursalRoute');
 
 app.use('/api/usuario', usuarioRoute);
 app.use('/api/categoria', categoriaRoute);
+app.use('/api/producto', productoRoute);
+app.use('/api/sucursal', sucursalRoute);
 
 
 app.listen(process.env.PORT, () => {
