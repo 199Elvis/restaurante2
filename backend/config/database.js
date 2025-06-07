@@ -16,7 +16,7 @@ const pool = mysql.createPool({
     queueLimit: 0,
 });
 
-exports.getTransaction = async() => {
+const getTransaction = async () => {
     const conn = await pool.getConnection();
     await conn.beginTransaction();
     return conn;
@@ -32,4 +32,7 @@ pool.getConnection()
 });
 
 
-module.exports = pool;
+module.exports = {
+    pool: pool,
+    getTransaction: getTransaction
+}

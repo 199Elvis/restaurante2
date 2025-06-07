@@ -8,9 +8,9 @@ exports.createPedido = async (data, con = null) => {
         idSucursal: data.idSucursal,
         idUsuario: data.idUsuario,
         estado: data.estado,
-        edCliente: data.idCliente
+        idCliente: data.idCliente
     }
-    const pedido = con
+    const [pedido] = con
         ? await con.query(query, values)
         : await db.execute(query, values);
     return pedido.insertId;
