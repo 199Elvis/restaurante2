@@ -64,6 +64,10 @@ function fechas(fecha){
     const regexDDMMYYYY = /^\d{2}-\d{2}-\d{4}$/;
     return regexDDMMYYYY.test(fecha);
 }
+function decimales(num, decimales = 2) {
+    const regex = new RegExp(`^[0-9]+(\\.[0-9]{1,${decimales}})?$`);
+    return regex.test(num);
+}
 
 module.exports = {
     cadenas,
@@ -71,5 +75,6 @@ module.exports = {
     numeros,
     contrasenia,
     fechas,
-    soloTexto
+    soloTexto,
+    decimales
 }

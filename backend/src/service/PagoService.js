@@ -1,19 +1,29 @@
-// En src/service/PagoService.js
-
+const productoRepo = require('../repositories/ProductoRepo');
 const clienteRepo = require('../repositories/ClienteRepo');
 const facturaRepo = require('../repositories/FacturaRepo');
 const detallePedidoRepo = require('../repositories/DetallePedidoRepo');
 const pedidoRepo = require('../repositories/PedidoRepo'); // Corregido 'peidoRepo'
 const pagoRepo = require('../repositories/PagoRepo');
 const { getTransaction } = require('../../config/database');
-const { cadenas, numeros, fechas, soloTexto } = require('../validation/validationUtils');
+const { cadenas, numeros, fechas, soloTexto, decimales } = require('../validation/validationUtils');
 const fechaActual = require('../utils/dateNow'); // Asegúrate de que la ruta sea correcta
 
 exports.realizarPago = async (data) => {
     let con;
     try {
         const fechaAc = fechaActual();
-
+        let tot = 0;
+        let sub = 0;
+        if (!validarDatosEntrada(data)) {
+            throw new Error('Datos de entrada no válidos');
+        }
+        data.listProducto.forEach((lista) => {
+            lista.forEach(clave => {
+                sub = clave.precioUnitario * clave.cantidad;
+                tot = tot + sub;
+            })
+        })
+        
         con = await getTransaction();
         const pago = await crearPago({
             monto: data.monto,
@@ -27,28 +37,72 @@ exports.realizarPago = async (data) => {
         }, con);
         const pedido = await crearPedido({
             fecha: fechaAc,
-            total: data.total,
+            total: tot.toFixed(2),
             idSucursal: data.idSucursal,
             idUsuario: data.idUsuario,
-            estadoPe: data.estadoPe, // Ojo: si en tu DB es 'estado', aquí debería ser 'estado'
-            idCliente: cliente, // ¡Pasar el ID del cliente, no el objeto completo!
-            idPago: pago // ¡Pasar el ID del pago, no el objeto completo!
+            estadoPe: data.estadoPe,
+            idCliente: cliente,
+            idPago: pago
         }, con);
-
-        console.log(data);
-        console.log(data.listProducto)
         const detallePromises = [];
+        const stockPromises = [];
         if (Array.isArray(data.listProducto)) {
-            data.listProducto.forEach((listaProductos) => { // 'index' no se usa
-                if (Array.isArray(listaProductos)) { // Asegurarse de que `listaProductos` es un array
-                    listaProductos.forEach(clave => {
+            const isValidStructure = data.listProducto.every(lista => Array.isArray(lista));
+            
+            if (!isValidStructure) {
+                throw new Error('Formato incorrecto: cada elemento debe ser un array de productos');
+            }
+            for (const listaProductos of data.listProducto) {
+                for (const producto of listaProductos) {
+                    try {
+                        const pre = await productoRepo.precioUnitario(producto.idProducto, con);
+                        console.log("holas",pre);
+                        if (Math.abs(pre - producto.precioUnitario) > 0.01) {
+                            console.warn(`Precio diferente para producto ${producto.idProducto}: 
+                                DB=${pre}, Recibido=${producto.precioUnitario}`);
+                        }
+                        const subTo = producto.precioUnitario * producto.cantidad;
                         detallePromises.push(crearDetalle({
-                            idPedido: pedido, // ¡Pasar el ID del pedido!
+                            idPedido: pedido,
+                            idProducto: producto.idProducto,
+                            cantidad: producto.cantidad,
+                            precioUnitario: producto.precioUnitario,
+                            subtotal: subTo.toFixed(2)
+                        }, con));
+
+                        stockPromises.push(actualizarStock({
+                            cantidad: producto.cantidad, 
+                            idProducto: producto.idProducto
+                        }, con));
+                        
+                    } catch (error) {
+                        console.error(`Error procesando producto ${producto.idProducto}:`, error);
+                        throw new Error(`Error en producto ID ${producto.idProducto}: ${error.message}`);
+                    }
+                }
+            }
+        } else {
+            console.error('Error: data.listProducto no es un array');
+            throw new Error('Formato de productos incorrecto en la solicitud.');
+        }
+        /*
+        if (Array.isArray(data.listProducto)) {
+            data.listProducto.forEach((listaProductos) => {
+                if (Array.isArray(listaProductos)) {
+                    listaProductos.forEach(clave => {
+                        const subTo = clave.precioUnitario * clave.cantidad
+                        const pre = await productoRepo.precioUnitario(clave.idProducto)
+                        detallePromises.push(crearDetalle({
+                            idPedido: pedido,
                             idProducto: clave.idProducto,
                             cantidad: clave.cantidad,
                             precioUnitario: clave.precioUnitario,
-                            subtotal: clave.subtotal
-                        }, con)); // Pasar la conexión
+                            subtotal: subTo.toFixed(2)
+                        }, con));
+                        stockPromises.push(actualizarStock({
+                            cantidad: clave.cantidad, 
+                            idProducto: clave.idProducto
+                        }, con));
                     });
                 } else {
                     console.warn('Advertencia: Se esperaba un array de arrays para productos. Verifique la estructura de data.productos.');
@@ -57,11 +111,12 @@ exports.realizarPago = async (data) => {
         } else {
             console.error('Error: data.productos no es un array o su estructura es inesperada.');
             throw new Error('Formato de productos incorrecto en la solicitud.');
-        }
+        }*/
 
-        await Promise.all(detallePromises); // Esperar a que todos los detalles se inserten
+        await Promise.all(detallePromises);
+        await Promise.all(stockPromises);
 
-        await con.commit(); // Si todo salió bien, confirma la transacción
+        await con.commit();
         console.log("Transacción confirmada exitosamente.");
         return { success: true, pedido };
 
@@ -88,15 +143,12 @@ exports.realizarPago = async (data) => {
     }
 };
 
-// --- Funciones auxiliares: Asegurarse de que reciban `con` y los datos correctos ---
-
 async function crearPago({ monto, fecha, metodo, estadoP }, con) {
     const data = { monto, fecha, metodo, estado: estadoP };
     try {
         const pago = await pagoRepo.createPago(data, con);
-        return pago; // `pago` debería contener el ID insertado
+        return pago;
     } catch (error) {
-        // ¡Mejora crucial: lanzar el error original para depurar!
         console.error("Error original en pagoRepo.createPago:", error);
         throw new Error('Ocurrió un error al crear el pago: ' + error.message);
     }
@@ -106,7 +158,7 @@ async function crearCliente({ nombre, ci }, con) {
     const data = { nombre, ci };
     try {
         const cliente = await clienteRepo.createCliente(data, con);
-        return cliente; // `cliente` debería contener el ID insertado
+        return cliente;
     } catch (error) {
         console.error("Error original en clienteRepo.createCliente:", error);
         throw new Error('Ocurrió un error al crear el cliente: ' + error.message);
@@ -119,16 +171,16 @@ async function crearPedido({ fecha, total, idSucursal, idUsuario, estadoPe, idCl
         total,
         idSucursal,
         idUsuario,
-        estado: estadoPe, // Asumo que el campo en DB es 'estado'
+        estado: estadoPe,
         idCliente,
         idPago
     };
     try {
         const pedido = await pedidoRepo.createPedido(data, con);
-        return pedido; // `pedido` debería contener el ID insertado
+        return pedido;
     } catch (error) {
-        console.error("Error original en pedidoRepo.createPedido:", error); // <-- ¡Esto es vital!
-        throw new Error('Ocurrió un error al crear el pedido: ' + error.message); // Incluye el mensaje original
+        console.error("Error original en pedidoRepo.createPedido:", error);
+        throw new Error('Ocurrió un error al crear el pedido: ' + error.message);
     }
 }
 
@@ -141,4 +193,50 @@ async function crearDetalle({ idPedido, idProducto, cantidad, precioUnitario, su
         console.error("Error original en detallePedidoRepo.createDetallePedido:", error);
         throw new Error('Ocurrió un error al agregar el detalle del pedido: ' + error.message);
     }
+}
+
+async function actualizarStock({cantidad, idProducto}, con){
+    try {
+        const producto = await productoRepo.updateStock({cantidad, idProducto}, con);
+        return producto;        
+    } catch (error) {
+        console.error("Error original en detallePedidoRepo.createDetallePedido:", error);
+        throw new Error('Ocurrió un error al actualizar el stock: ' + error.message);
+    }
+}
+
+
+function validarDatosEntrada(data) {
+    const camposRequeridos = ['monto', 'metodo', 'nombre', 'ci', 'listProducto'];
+    console.log(data);
+    for (const campo of camposRequeridos) {
+        if (!data[campo]) {
+            throw new Error(`Campo requerido faltante: ${campo}`);
+        }
+    }
+    if (!decimales(data.monto.toString())) {
+        throw new Error('Monto no válido');
+    }
+    if (!soloTexto(data.metodo) || !soloTexto(data.nombre)) {
+        throw new Error('Metodo o nombre no válidos');
+    }
+    if (!numeros(data.ci)) {
+        throw new Error('CI no válida');
+    }
+    if (!Array.isArray(data.listProducto)) {
+        throw new Error('Formato de productos inválido');
+    }
+    for (const lista of data.listProducto) {
+        if (!Array.isArray(lista)) {
+            throw new Error('Cada elemento de listaProductos debe ser un array');
+        }
+        for (const producto of lista) {
+            if (!numeros(producto.idProducto) || 
+                !numeros(producto.cantidad) || 
+                !decimales(producto.precioUnitario.toString())) {
+                throw new Error('Datos de producto no válidos');
+            }
+        }
+    }
+    return true;
 }
